@@ -15,11 +15,10 @@ doge -> phrase*
 **5.2. Describe textually a grammar for decimal numbers such as 0.01 or 52.221**
 
 ```python
-non_zero_digit -> '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+non_zero_digit -> [1-9];
 digit -> '0' | non_zero_digit;
-integer -> '0' | non_zero_digit digit*;
-decimal -> '.' digit+;
-number -> integer decimal?;
+integer -> '-'? ('0' | non_zero_digit digit*) ;
+number -> integer ('.' digit+)?;
 ```
 
 **5.3. Describe textually a grammar for web URLs such as http://www.buildyourownlisp.com**
@@ -55,11 +54,10 @@ sentence -> noun_phrase verb_phrase ;
 ```python
 space -> [\s]* ;
 key -> '"' .+ '"' ;
-non_zero_digit -> [1-9] ;
-digit -> 0 | non_zero_digit ;
-integer -> 0 | non_zero_digit digit* ;
-decimal -> '.' digit+
-number -> integer decimal? ;
+non_zero_digit -> [1-9];
+digit -> '0' | non_zero_digit;
+integer -> '-'? ('0' | non_zero_digit digit*) ;
+number -> integer ('.' digit+)?;
 string -> '"' .* '"' ;
 null -> 'null' ;
 terminal -> number | string | null ;
