@@ -18,20 +18,46 @@ int count_leaves(mpc_ast_t *t)
     {
         count += count_leaves(t->children[i]);
     }
-
     return count;
 }
 
 int count_branches(mpc_ast_t *t)
 {
     int count = t->children_num;
-
     for (int i = 0; i < t->children_num; i++)
     {
         count += count_branches(t->children[i]);
     }
-
     return count;
+}
+
+int count_nodes(mpc_ast_t *t)
+{
+    int total = 1;
+    for (int i = 0; i < t->children_num; i++)
+    {
+        total += count_nodes(t->children[i]);
+    }
+    return total;
+}
+
+int max_children_in_single_branch(mpc_ast_t *t)
+{
+    if (t->children_num == 0)
+    {
+        return 0;
+    }
+
+    int max = -1;
+    for (int i = 0; i < t->children_num; i++)
+    {
+        int number_of_nodes = count_nodes(t->children[i]);
+        if (number_of_nodes > max)
+        {
+            max = number_of_nodes;
+        }
+    }
+    return max;
 }
 
 int main(int argc, char **argv)
@@ -74,9 +100,11 @@ int main(int argc, char **argv)
 
             int leaves = count_leaves(t);
             int branches = count_branches(t);
+            int max_children_count = max_children_in_single_branch(t);
 
             printf("Leaves: %i\n", leaves);
             printf("Branches: %i\n", branches);
+            printf("Max children in 1 branch: %i\n", max_children_count);
 
             mpc_ast_delete(t);
         }
