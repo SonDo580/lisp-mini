@@ -85,6 +85,12 @@ long eval(mpc_ast_t *t)
     // Store the third child
     long x = eval(t->children[2]);
 
+    // Handle negation
+    if (!strstr(t->children[3]->tag, "expr") && strcmp(op, "-") == 0)
+    {
+        return -x;
+    }
+
     // Iterate the remaining children and combining
     int i = 3;
     while (strstr(t->children[i]->tag, "expr"))
