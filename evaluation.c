@@ -22,6 +22,18 @@ int count_leaves(mpc_ast_t *t)
     return count;
 }
 
+int count_branches(mpc_ast_t *t)
+{
+    int count = t->children_num;
+
+    for (int i = 0; i < t->children_num; i++)
+    {
+        count += count_branches(t->children[i]);
+    }
+
+    return count;
+}
+
 int main(int argc, char **argv)
 {
     // Create the parsers
@@ -59,8 +71,13 @@ int main(int argc, char **argv)
         {
             // Success parse: r.output is the AST
             mpc_ast_t *t = r.output;
+
             int leaves = count_leaves(t);
+            int branches = count_branches(t);
+
             printf("Leaves: %i\n", leaves);
+            printf("Branches: %i\n", branches);
+
             mpc_ast_delete(t);
         }
         else
