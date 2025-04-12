@@ -1,0 +1,1 @@
+cc -std=c99 -g -Wall evaluation.c mpc.c -ledit -o evaluation
