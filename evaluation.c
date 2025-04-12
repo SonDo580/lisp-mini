@@ -6,63 +6,20 @@
 
 #include "mpc.h"
 
-long eval_op(long x, char *op, long y)
+int count_leaves(mpc_ast_t *t)
 {
-    if (strcmp(op, "+") == 0)
+    if (t->children_num == 0)
     {
-        return x + y;
-    }
-    if (strcmp(op, "-") == 0)
-    {
-        return x - y;
-    }
-    if (strcmp(op, "*") == 0)
-    {
-        return x * y;
-    }
-    if (strcmp(op, "/") == 0)
-    {
-        return x / y;
-    }
-    return 0;
-}
-
-long eval(mpc_ast_t *t)
-{
-    /* Example AST: * 10 (+ 1 51)
-    regex
-    operator|char:1:1 '*'
-    expr|number|regex:1:3 '10'
-    expr|>
-        char:1:6 '('
-        operator|char:1:7 '+'
-        expr|number|regex:1:9 '1'
-        expr|number|regex:1:11 '51'
-        char:1:13 ')'
-    regex
-     */
-
-    // Check for number
-    if (strstr(t->tag, "number"))
-    {
-        return atoi(t->contents);
+        return 1;
     }
 
-    // The operator is always the second child
-    char *op = t->children[1]->contents;
-
-    // Store the third child
-    long x = eval(t->children[2]);
-
-    // Iterate the remaining children and combining
-    int i = 3;
-    while (strstr(t->children[i]->tag, "expr"))
+    int count = 0;
+    for (int i = 0; i < t->children_num; i++)
     {
-        x = eval_op(x, op, eval(t->children[i]));
-        i++;
+        count += count_leaves(t->children[i]);
     }
 
-    return x;
+    return count;
 }
 
 int main(int argc, char **argv)
@@ -101,9 +58,10 @@ int main(int argc, char **argv)
         if (mpc_parse("<stdin>", input, Lispy, &r))
         {
             // Success parse: r.output is the AST
-            long result = eval(r.output);
-            printf("%li\n", result);
-            mpc_ast_delete(r.output);
+            mpc_ast_t *t = r.output;
+            int leaves = count_leaves(t);
+            printf("Leaves: %i\n", leaves);
+            mpc_ast_delete(t);
         }
         else
         {
