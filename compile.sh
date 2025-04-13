@@ -1,1 +1,1 @@
-cc -std=c99 -g -Wall error_handling.c mpc.c -ledit -o error_handling
+cc -std=c99 -g -Wall error_handling.c mpc.c -ledit -lm -o error_handling

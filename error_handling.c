@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <editline/readline.h>
 #include <editline/history.h>
@@ -27,13 +28,13 @@ typedef struct
     int type; // tell which field is meaningful to access
     union
     {
-        long num;
+        double num;
         int err;
     };
 } lval;
 
 // Create Lisp number
-lval lval_num(long x)
+lval lval_num(double x)
 {
     lval v;
     v.type = LVAL_NUM;
@@ -75,7 +76,7 @@ void lval_print(lval v)
     switch (v.type)
     {
     case LVAL_NUM:
-        printf("%li", v.num);
+        printf("%.2f", v.num);
         break;
     case LVAL_ERR:
         lerr_print(v.err);
@@ -123,10 +124,29 @@ lval eval_op(lval x, char *op, lval y)
     }
     if (strcmp(op, "%") == 0)
     {
-        return lval_num(x.num % y.num);
+        // fmod returns x - (n * y), we n is the integer quotient of x / y
+        return lval_num(fmod(x.num, y.num));
     }
     // Invalid operator
     return lval_err(LERR_BAD_OP);
+}
+
+lval eval_num(mpc_ast_t *t)
+{
+    errno = 0;
+    char *endptr;
+
+    double x = strtod(t->contents, &endptr);
+
+    // Check for conversion error
+    // - no valid conversion occurred
+    // - the result is out of range
+    if (t->contents == endptr || errno == ERANGE)
+    {
+        return lval_err(LERR_BAD_NUM);
+    }
+
+    return lval_num(x);
 }
 
 lval eval(mpc_ast_t *t)
@@ -147,9 +167,7 @@ lval eval(mpc_ast_t *t)
     // Check for number. Handle conversion error
     if (strstr(t->tag, "number"))
     {
-        errno = 0;
-        long x = strtol(t->contents, NULL, 10);
-        return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
+        return eval_num(t);
     }
 
     // The operator is always the second child
@@ -180,7 +198,7 @@ int main(int argc, char **argv)
     // Define the parsing rules
     mpca_lang(MPCA_LANG_DEFAULT,
               "\
-    number   : /-?[0-9]+/ ;                             \
+    number   : /-?[0-9]+(.[0-9]+)?/ ;                  \
     operator : '+' | '-' | '*' | '/' | '%';             \
     expr     : <number> | '(' <operator> <expr>+ ')' ;  \
     lispy    : /^/ <operator> <expr>+ /$/ ;             \
