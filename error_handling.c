@@ -25,8 +25,11 @@ enum
 typedef struct
 {
     int type; // tell which field is meaningful to access
-    long num;
-    int err;
+    union
+    {
+        long num;
+        int err;
+    };
 } lval;
 
 // Create Lisp number
