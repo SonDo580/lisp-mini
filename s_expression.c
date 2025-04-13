@@ -70,7 +70,7 @@ int main(int argc, char **argv)
     mpca_lang(MPCA_LANG_DEFAULT,
               "\
     number   : /-?[0-9]+/ ; \
-    symbol : '+' | '-' | '*' | '/' ;  \
+    symbol : '+' | '-' | '*' | '/' | '%' ;  \
     sexpr : '(' <expr>* ')' ;  \
     expr     : <number> | <symbol> | <sexpr> ;  \
     lispy    : /^/ <expr>* /$/ ; \
@@ -417,6 +417,18 @@ lval *builtin_op(lval *args, char *op)
             }
 
             x->num /= y->num;
+        }
+        else if (strcmp(op, "%") == 0)
+        {
+            if (y->num == 0)
+            {
+                lval_del(x);
+                lval_del(y);
+                lval_del(args);
+                return lval_err("Division by zero!");
+            }
+
+            x->num %= y->num;
         }
 
         lval_del(y);
