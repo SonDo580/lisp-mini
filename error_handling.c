@@ -6,28 +6,124 @@
 
 #include "mpc.h"
 
-long eval_op(long x, char *op, long y)
+// Possible Lisp value types
+enum
 {
+    LVAL_NUM,
+    LVAL_ERR
+};
+
+// Possible Error types
+enum
+{
+    LERR_DIV_ZERO,
+    LERR_BAD_OP,
+    LERR_BAD_NUM
+};
+
+// Represent Lisp value (number or error)
+typedef struct
+{
+    int type; // tell which field is meaningful to access
+    long num;
+    int err;
+} lval;
+
+// Create Lisp number
+lval lval_num(long x)
+{
+    lval v;
+    v.type = LVAL_NUM;
+    v.num = x;
+    return v;
+}
+
+// Create Lisp error
+lval lval_err(int x)
+{
+    lval v;
+    v.type = LVAL_ERR;
+    v.err = x;
+    return v;
+}
+
+// Print a Lisp error
+void lerr_print(int err)
+{
+    switch (err)
+    {
+    case LERR_DIV_ZERO:
+        printf("Error: Division By Zero!");
+        break;
+    case LERR_BAD_OP:
+        printf("Error: Invalid Operator!");
+        break;
+    case LERR_BAD_NUM:
+        printf("Error: Invalid Number!");
+        break;
+    default:
+        break;
+    }
+}
+
+// Print a Lisp value
+void lval_print(lval v)
+{
+    switch (v.type)
+    {
+    case LVAL_NUM:
+        printf("%li", v.num);
+        break;
+    case LVAL_ERR:
+        lerr_print(v.err);
+        break;
+    default:
+        break;
+    }
+}
+
+// Print a Lisp value followed by a new line
+void lval_println(lval v)
+{
+    lval_print(v);
+    putchar('\n');
+}
+
+lval eval_op(lval x, char *op, lval y)
+{
+    // If either value is error return it
+    if (x.type == LVAL_ERR)
+    {
+        return x;
+    }
+    if (y.type == LVAL_ERR)
+    {
+        return y;
+    }
+
+    // Do maths on number values
     if (strcmp(op, "+") == 0)
     {
-        return x + y;
+        return lval_num(x.num + y.num);
     }
     if (strcmp(op, "-") == 0)
     {
-        return x - y;
+        return lval_num(x.num - y.num);
     }
     if (strcmp(op, "*") == 0)
     {
-        return x * y;
+        return lval_num(x.num * y.num);
     }
     if (strcmp(op, "/") == 0)
     {
-        return x / y;
+        return y.num == 0 ? lval_err(LERR_DIV_ZERO) : lval_num(x.num / y.num);
     }
-    return 0;
+
+    // Invalid operator
+    return lval_err(LERR_BAD_OP);
 }
 
-long eval(mpc_ast_t *t)
+lval eval(mpc_ast_t *t)
 {
     /* Example AST: * 10 (+ 1 51)
     regex
@@ -42,17 +138,19 @@ long eval(mpc_ast_t *t)
     regex
      */
 
-    // Check for number
+    // Check for number. Handle conversion error
     if (strstr(t->tag, "number"))
     {
-        return atoi(t->contents);
+        errno = 0;
+        long x = strtol(t->contents, NULL, 10);
+        return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
     }
 
     // The operator is always the second child
     char *op = t->children[1]->contents;
 
     // Store the third child
-    long x = eval(t->children[2]);
+    lval x = eval(t->children[2]);
 
     // Iterate the remaining children and combining
     int i = 3;
@@ -101,8 +199,8 @@ int main(int argc, char **argv)
         if (mpc_parse("<stdin>", input, Lispy, &r))
         {
             // Success parse: r.output is the AST
-            long result = eval(r.output);
-            printf("%li\n", result);
+            lval result = eval(r.output);
+            lval_println(result);
             mpc_ast_delete(r.output);
         }
         else
