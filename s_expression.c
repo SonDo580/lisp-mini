@@ -18,13 +18,13 @@ enum
 // Represent Lisp value
 typedef struct lval
 {
-    int type; // tell which field is meaningful to access
+    int type;
 
     long num;
     char *err;
     char *sym;
 
-    // count and pointer to a list of lval pointer
+    // list of lval pointer
     int count;
     struct lval **cell;
 } lval;
@@ -422,6 +422,6 @@ lval *builtin_op(lval *args, char *op)
         lval_del(y);
     }
 
-    lval_del(args); // delete
+    lval_del(args);
     return x;
 }
