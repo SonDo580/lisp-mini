@@ -1,1 +1,1 @@
-cc -std=c99 -g -Wall s_expression.c mpc.c -ledit -o s_expression
+cc -std=c99 -g -Wall s_expression.c mpc.c -ledit -lm -o s_expression

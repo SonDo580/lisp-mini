@@ -20,7 +20,7 @@ typedef struct lval
 {
     int type;
 
-    long num;
+    double num;
     char *err;
     char *sym;
 
@@ -30,7 +30,7 @@ typedef struct lval
 } lval;
 
 // Construct pointer to a new Lisp value
-lval *lval_num(long x);    // Number
+lval *lval_num(double x);  // Number
 lval *lval_err(char *msg); // Error
 lval *lval_sym(char *s);   // Symbol
 lval *lval_sexpr();        // S-Expression
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     // Define the parsing rules
     mpca_lang(MPCA_LANG_DEFAULT,
               "\
-    number   : /-?[0-9]+/ ; \
+    number   : /-?[0-9]+(.[0-9]+)?/ ; \
     symbol : '+' | '-' | '*' | '/' | '%' ;  \
     sexpr : '(' <expr>* ')' ;  \
     expr     : <number> | <symbol> | <sexpr> ;  \
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
 }
 
 // Construct pointer to a new Number
-lval *lval_num(long x)
+lval *lval_num(double x)
 {
     lval *v = malloc(sizeof(lval));
     v->type = LVAL_NUM;
@@ -186,8 +186,19 @@ void lval_del(lval *v)
 lval *lval_read_num(mpc_ast_t *t)
 {
     errno = 0;
-    long x = strtol(t->contents, NULL, 10);
-    return errno != ERANGE ? lval_num(x) : lval_err("invalid number");
+    char *endptr;
+
+    double x = strtod(t->contents, &endptr);
+
+    // Check for conversion error
+    // - no valid conversion occurred
+    // - the result is out of range
+    if (t->contents == endptr || errno == ERANGE)
+    {
+        return lval_err("Invalid number!");
+    }
+
+    return lval_num(x);
 }
 
 // Add element to S-expression
@@ -259,7 +270,7 @@ void lval_print(lval *v)
     switch (v->type)
     {
     case LVAL_NUM:
-        printf("%li", v->num);
+        printf("%.2f", v->num);
         break;
     case LVAL_ERR:
         printf("Error: %s", v->err);
@@ -428,7 +439,7 @@ lval *builtin_op(lval *args, char *op)
                 return lval_err("Division by zero!");
             }
 
-            x->num %= y->num;
+            x->num = fmod(x->num, y->num);
         }
 
         lval_del(y);
