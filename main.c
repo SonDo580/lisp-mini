@@ -77,6 +77,7 @@ lval *builtin_join(lval *args);
 lval *lval_join(lval *x, lval *y);
 lval *builtin_len(lval *args);
 lval *builtin_init(lval *args);
+lval *builtin_cons(lval *args);
 
 int main(int argc, char **argv)
 {
@@ -94,7 +95,7 @@ int main(int argc, char **argv)
     number   : /-?[0-9]+/ ; \
     symbol : '+' | '-' | '*' | '/' \
            | \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\"  \
-           | \"len\" | \"init\" ; \
+           | \"len\" | \"init\" | \"cons\" ; \
     sexpr : '(' <expr>* ')' ;  \
     qexpr : '{' <expr>* '}' ;  \
     expr     : <number> | <symbol> | <sexpr> | <qexpr> ;  \
@@ -585,6 +586,28 @@ lval *builtin_init(lval *args)
     return v;
 }
 
+// Append a value to the front of a Q-Expression
+lval *builtin_cons(lval *args)
+{
+    LASSERT(args, args->count == 2, "Function 'cons' - incorrect number of arguments");
+    LASSERT(args, args->cell[1]->type == LVAL_QEXPR, "Function 'cons' - incorrect argument type");
+
+    lval *x = lval_pop(args, 0);
+    lval *q_expr = lval_pop(args, 0);
+    lval_del(args);
+
+    q_expr->count++;
+    q_expr->cell = realloc(q_expr->cell, sizeof(lval *) * q_expr->count);
+    memmove(
+        &q_expr->cell[1],                    // destination start
+        &q_expr->cell[0],                    // source start
+        sizeof(lval *) * (q_expr->count - 1) // number of bytes to move
+    );
+    q_expr->cell[0] = x;
+
+    return q_expr;
+}
+
 // Call correct built-in function based on symbol
 lval *builtin(lval *args, char *func)
 {
@@ -615,6 +638,10 @@ lval *builtin(lval *args, char *func)
     if (strcmp("init", func) == 0)
     {
         return builtin_init(args);
+    }
+    if (strcmp("cons", func) == 0)
+    {
+        return builtin_cons(args);
     }
     if (strstr("+-*/", func))
     {
