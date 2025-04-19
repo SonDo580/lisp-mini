@@ -76,6 +76,7 @@ lval *builtin_eval(lval *args);
 lval *builtin_join(lval *args);
 lval *lval_join(lval *x, lval *y);
 lval *builtin_len(lval *args);
+lval *builtin_init(lval *args);
 
 int main(int argc, char **argv)
 {
@@ -93,7 +94,7 @@ int main(int argc, char **argv)
     number   : /-?[0-9]+/ ; \
     symbol : '+' | '-' | '*' | '/' \
            | \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\"  \
-           | \"len\" ; \
+           | \"len\" | \"init\" ; \
     sexpr : '(' <expr>* ')' ;  \
     qexpr : '{' <expr>* '}' ;  \
     expr     : <number> | <symbol> | <sexpr> | <qexpr> ;  \
@@ -568,6 +569,22 @@ lval *builtin_len(lval *args)
     return lval_num(len);
 }
 
+// Returns all of a Q-Expression except the final element
+lval *builtin_init(lval *args)
+{
+    LASSERT(args, args->count == 1, "Function 'init' - too many arguments");
+    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'init' - incorrect argument type");
+    LASSERT(args, args->cell[0]->count > 0, "Function 'init' - receive {}");
+
+    lval *v = lval_take(args, 0);
+
+    // Remove the last element
+    lval *last = lval_pop(v, v->count - 1);
+    lval_del(last);
+
+    return v;
+}
+
 // Call correct built-in function based on symbol
 lval *builtin(lval *args, char *func)
 {
@@ -594,6 +611,10 @@ lval *builtin(lval *args, char *func)
     if (strcmp("len", func) == 0)
     {
         return builtin_len(args);
+    }
+    if (strcmp("init", func) == 0)
+    {
+        return builtin_init(args);
     }
     if (strstr("+-*/", func))
     {
