@@ -6,13 +6,22 @@
 
 #include "mpc.h"
 
+// Macros
+#define LASSERT(args, cond, err) \
+    if (!(cond))                 \
+    {                            \
+        lval_del(args);          \
+        return lval_err(err);    \
+    }
+
 // Possible Lisp value types
 enum
 {
-    LVAL_ERR,  // error
-    LVAL_NUM,  // number
-    LVAL_SYM,  // symbol
-    LVAL_SEXPR // S-expression
+    LVAL_ERR,   // error
+    LVAL_NUM,   // number
+    LVAL_SYM,   // symbol
+    LVAL_SEXPR, // S-expression
+    LVAL_QEXPR  // Q-expression
 };
 
 // Represent Lisp value
@@ -34,28 +43,38 @@ lval *lval_num(long x);    // Number
 lval *lval_err(char *msg); // Error
 lval *lval_sym(char *s);   // Symbol
 lval *lval_sexpr();        // S-Expression
+lval *lval_qexpr();        // Q-Expression
 
 // Delete a Lisp value
 void lval_del(lval *v);
 
 // Construct Lisp value from an AST node
 lval *lval_read_num(mpc_ast_t *t); // Number
-lval *lval_add(lval *v, lval *x);  // Add element to S-expression
+lval *lval_add(lval *v, lval *x);  // Add element to S-expression or a Q-expression
 lval *lval_read(mpc_ast_t *t);
 
 // Printing
-void lval_sexpr_print(lval *v, char open, char close); // Print an S-expression
-void lval_print(lval *v);                              // Print a Lisp value
-void lval_println(lval *v);                            // Print a Lisp value followed by a new line
+void lval_expr_print(lval *v, char open, char close); // Print an S-expression or a Q-expression
+void lval_print(lval *v);                             // Print a Lisp value
+void lval_println(lval *v);                           // Print a Lisp value followed by a new line
 
 // Evaluation
 lval *lval_eval_sexpr(lval *v);         // Evaluate an S-expression
 lval *lval_eval(lval *v);               // Evaluate a Lisp value
 lval *builtin_op(lval *args, char *op); // Apply the operation on the argument list
+lval *builtin(lval *args, char *func);  // Call correct built-in function based on symbol
 
 // Utils
 lval *lval_pop(lval *v, int i);  // Pop the element at index i
 lval *lval_take(lval *v, int i); // Pop the element at index i and delete v
+
+// List operations
+lval *builtin_head(lval *args);
+lval *builtin_tail(lval *args);
+lval *builtin_list(lval *args);
+lval *builtin_eval(lval *args);
+lval *builtin_join(lval *args);
+lval *lval_join(lval *x, lval *y);
 
 int main(int argc, char **argv)
 {
@@ -63,6 +82,7 @@ int main(int argc, char **argv)
     mpc_parser_t *Number = mpc_new("number");
     mpc_parser_t *Symbol = mpc_new("symbol");
     mpc_parser_t *Sexpr = mpc_new("sexpr"); // S-Expression
+    mpc_parser_t *Qexpr = mpc_new("qexpr"); // Q-Expression
     mpc_parser_t *Expr = mpc_new("expr");
     mpc_parser_t *Lispy = mpc_new("lispy");
 
@@ -70,12 +90,14 @@ int main(int argc, char **argv)
     mpca_lang(MPCA_LANG_DEFAULT,
               "\
     number   : /-?[0-9]+/ ; \
-    symbol : '+' | '-' | '*' | '/' ;  \
+    symbol : '+' | '-' | '*' | '/' \
+           | \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\" ; \
     sexpr : '(' <expr>* ')' ;  \
-    expr     : <number> | <symbol> | <sexpr> ;  \
+    qexpr : '{' <expr>* '}' ;  \
+    expr     : <number> | <symbol> | <sexpr> | <qexpr> ;  \
     lispy    : /^/ <expr>* /$/ ; \
     ",
-              Number, Symbol, Sexpr, Expr, Lispy);
+              Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
     // Print Version and Exit Instruction
     puts("Lispy version 0.0.0.0.1");
@@ -111,7 +133,7 @@ int main(int argc, char **argv)
     }
 
     // Cleanup the parsers
-    mpc_cleanup(5, Number, Symbol, Sexpr, Expr, Lispy);
+    mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
     return 0;
 }
 
@@ -145,10 +167,20 @@ lval *lval_sym(char *s)
 }
 
 // Construct pointer to a new S-Expression
-lval *lval_sexpr(void)
+lval *lval_sexpr()
 {
     lval *v = malloc(sizeof(lval));
     v->type = LVAL_SEXPR;
+    v->count = 0;
+    v->cell = NULL;
+    return v;
+}
+
+// Construct pointer to a new Q-Expression
+lval *lval_qexpr()
+{
+    lval *v = malloc(sizeof(lval));
+    v->type = LVAL_QEXPR;
     v->count = 0;
     v->cell = NULL;
     return v;
@@ -168,6 +200,7 @@ void lval_del(lval *v)
         free(v->sym);
         break;
     case LVAL_SEXPR:
+    case LVAL_QEXPR:
         for (int i = 0; i < v->count; i++)
         {
             lval_del(v->cell[i]);
@@ -190,7 +223,7 @@ lval *lval_read_num(mpc_ast_t *t)
     return errno != ERANGE ? lval_num(x) : lval_err("invalid number");
 }
 
-// Add element to S-expression
+// Add element to S-expression or a Q-expression
 lval *lval_add(lval *v, lval *x)
 {
     v->count++;
@@ -212,11 +245,17 @@ lval *lval_read(mpc_ast_t *t)
         return lval_sym(t->contents);
     }
 
-    // Handle root and S-expression
     lval *x = NULL;
+
     if (strcmp(t->tag, ">") == 0 || strstr(t->tag, "sexpr"))
     {
+        // Handle root and S-expression
         x = lval_sexpr();
+    }
+    else if (strstr(t->tag, "qexpr"))
+    {
+        // Handle Q-expression
+        x = lval_qexpr();
     }
 
     // Adding valid expressions from children
@@ -224,6 +263,8 @@ lval *lval_read(mpc_ast_t *t)
     {
         if (strcmp(t->children[i]->contents, "(") == 0 ||
             strcmp(t->children[i]->contents, ")") == 0 ||
+            strcmp(t->children[i]->contents, "{") == 0 ||
+            strcmp(t->children[i]->contents, "}") == 0 ||
             strcmp(t->children[i]->tag, "regex") == 0)
         {
             continue;
@@ -235,8 +276,8 @@ lval *lval_read(mpc_ast_t *t)
     return x;
 }
 
-// Print an S-expression
-void lval_sexpr_print(lval *v, char open, char close)
+// Print an S-expression or a Q-expression
+void lval_expr_print(lval *v, char open, char close)
 {
     putchar(open);
 
@@ -268,7 +309,10 @@ void lval_print(lval *v)
         printf("%s", v->sym);
         break;
     case LVAL_SEXPR:
-        lval_sexpr_print(v, '(', ')');
+        lval_expr_print(v, '(', ')');
+        break;
+    case LVAL_QEXPR:
+        lval_expr_print(v, '{', '}');
         break;
     default:
         break;
@@ -319,7 +363,7 @@ lval *lval_eval_sexpr(lval *v)
     }
 
     // Call built-in with operator
-    lval *result = builtin_op(v, f->sym);
+    lval *result = builtin(v, f->sym);
     lval_del(f);
     return result;
 }
@@ -424,4 +468,119 @@ lval *builtin_op(lval *args, char *op)
 
     lval_del(args);
     return x;
+}
+
+// Takes a Q-Expression and returns a Q-Expression with only the first element
+lval *builtin_head(lval *args)
+{
+    LASSERT(args, args->count == 1, "Function 'head' - too many arguments");
+    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'head' - incorrect argument type");
+    LASSERT(args, args->cell[0]->count != 0, "Function 'head' - receive {}");
+
+    // Pop the first element and delete args
+    lval *v = lval_take(args, 0);
+
+    // Delete elements that are not head and return
+    while (v->count > 1)
+    {
+        lval_del(lval_pop(v, 1));
+    }
+    return v;
+}
+
+// Takes a Q-Expression and returns a Q-Expression with the first element removed
+lval *builtin_tail(lval *args)
+{
+    LASSERT(args, args->count == 1, "Function 'tail' - too many arguments");
+    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'tail' - incorrect argument type");
+    LASSERT(args, args->cell[0]->count != 0, "Function 'tail' - receive {}");
+
+    // Pop the first element and delete args
+    lval *v = lval_take(args, 0);
+
+    // Delete the first element and return
+    lval_del(lval_pop(v, 0));
+    return v;
+}
+
+// Returns a new Q-Expression containing the arguments
+lval *builtin_list(lval *args)
+{
+    args->type = LVAL_QEXPR;
+    return args;
+}
+
+// Takes a Q-Expression and evaluates it as if it were a S-Expression
+lval *builtin_eval(lval *args)
+{
+    LASSERT(args, args->count == 1, "Function 'eval' - too many arguments");
+    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'eval' - incorrect argument type");
+
+    lval *v = lval_take(args, 0);
+    v->type = LVAL_SEXPR;
+    return lval_eval(v);
+}
+
+// Returns a Q-Expression by joining Q-Expressions together
+lval *builtin_join(lval *args)
+{
+    for (int i = 0; i < args->count; i++)
+    {
+        LASSERT(args, args->cell[i]->type == LVAL_QEXPR, "Function 'join' - incorrect argument type");
+    }
+
+    lval *v = lval_pop(args, 0);
+    while (args->count > 0)
+    {
+        v = lval_join(v, lval_pop(args, 0));
+    }
+
+    lval_del(args);
+    return v;
+}
+
+// Helper for builtin_join - join 2 Q-Expressions together
+lval *lval_join(lval *x, lval *y)
+{
+    // Append all elements from y to x
+    while (y->count > 0)
+    {
+        x = lval_add(x, lval_pop(y, 0));
+    }
+
+    // Delete the empty y and return x
+    lval_del(y);
+    return x;
+}
+
+// Call correct built-in function based on symbol
+lval *builtin(lval *args, char *func)
+{
+    if (strcmp("list", func) == 0)
+    {
+        return builtin_list(args);
+    }
+    if (strcmp("head", func) == 0)
+    {
+        return builtin_head(args);
+    }
+    if (strcmp("tail", func) == 0)
+    {
+        return builtin_tail(args);
+    }
+    if (strcmp("join", func) == 0)
+    {
+        return builtin_join(args);
+    }
+    if (strcmp("eval", func) == 0)
+    {
+        return builtin_eval(args);
+    }
+    if (strstr("+-*/", func))
+    {
+        return builtin_op(args, func);
+    }
+
+    lval_del(args);
+    return lval_err("Unknown Function!");
 }
