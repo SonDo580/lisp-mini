@@ -75,6 +75,7 @@ lval *builtin_list(lval *args);
 lval *builtin_eval(lval *args);
 lval *builtin_join(lval *args);
 lval *lval_join(lval *x, lval *y);
+lval *builtin_len(lval *args);
 
 int main(int argc, char **argv)
 {
@@ -91,7 +92,8 @@ int main(int argc, char **argv)
               "\
     number   : /-?[0-9]+/ ; \
     symbol : '+' | '-' | '*' | '/' \
-           | \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\" ; \
+           | \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\"  \
+           | \"len\" ; \
     sexpr : '(' <expr>* ')' ;  \
     qexpr : '{' <expr>* '}' ;  \
     expr     : <number> | <symbol> | <sexpr> | <qexpr> ;  \
@@ -553,6 +555,19 @@ lval *lval_join(lval *x, lval *y)
     return x;
 }
 
+// Returns the number of elements in a Q-Expression
+lval *builtin_len(lval *args)
+{
+    LASSERT(args, args->count == 1, "Function 'len' - too many arguments");
+    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'len' - incorrect argument type");
+
+    lval *v = lval_take(args, 0);
+    int len = v->count;
+    lval_del(v);
+
+    return lval_num(len);
+}
+
 // Call correct built-in function based on symbol
 lval *builtin(lval *args, char *func)
 {
@@ -575,6 +590,10 @@ lval *builtin(lval *args, char *func)
     if (strcmp("eval", func) == 0)
     {
         return builtin_eval(args);
+    }
+    if (strcmp("len", func) == 0)
+    {
+        return builtin_len(args);
     }
     if (strstr("+-*/", func))
     {
