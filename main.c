@@ -57,9 +57,12 @@ struct lval
     long num;
     char *err;
     char *sym;
-    lbuiltin fun;
 
-    // list of lval pointer
+    // Function
+    lbuiltin fun;
+    char *fun_name;
+
+    // S-expression and Q-expression
     int count;
     lval **cell;
 };
@@ -73,12 +76,12 @@ struct lenv
 };
 
 // Construct a new Lisp value
-lval *lval_num(long x);             // Number
-lval *lval_err(char *fmt_str, ...); // Error
-lval *lval_sym(char *s);            // Symbol
-lval *lval_sexpr();                 // S-Expression
-lval *lval_qexpr();                 // Q-Expression
-lval *lval_fun(lbuiltin func);      // Function
+lval *lval_num(long x);                          // Number
+lval *lval_err(char *fmt_str, ...);              // Error
+lval *lval_sym(char *s);                         // Symbol
+lval *lval_sexpr();                              // S-Expression
+lval *lval_qexpr();                              // Q-Expression
+lval *lval_fun(lbuiltin func, char *name); // Function
 
 // Delete a Lisp value
 void lval_del(lval *v);
@@ -259,11 +262,15 @@ lval *lval_qexpr()
 }
 
 // Construct new function
-lval *lval_fun(lbuiltin func)
+lval *lval_fun(lbuiltin func, char *name)
 {
     lval *v = malloc(sizeof(lval));
     v->type = LVAL_FUN;
     v->fun = func;
+
+    v->fun_name = malloc(strlen(name) + 1);
+    strcpy(v->fun_name, name);
+
     return v;
 }
 
@@ -273,7 +280,9 @@ void lval_del(lval *v)
     switch (v->type)
     {
     case LVAL_NUM:
+        break;
     case LVAL_FUN:
+        free(v->fun_name);
         break;
     case LVAL_ERR:
         free(v->err);
@@ -397,7 +406,7 @@ void lval_print(lval *v)
         lval_expr_print(v, '{', '}');
         break;
     case LVAL_FUN:
-        printf("<function>");
+        printf("<function '%s'>", v->fun_name);
         break;
     default:
         break;
@@ -511,12 +520,16 @@ lval *lval_copy(lval *v)
 
     switch (v->type)
     {
-    // Copy function pointer and number directly
+    // Copy number directly
     case LVAL_NUM:
         x->num = v->num;
         break;
+
+    // Copy function
     case LVAL_FUN:
         x->fun = v->fun;
+        x->fun_name = malloc(strlen(v->fun_name) + 1);
+        strcpy(x->fun_name, v->fun_name);
         break;
 
     // Copy string for error and symbol
@@ -798,7 +811,7 @@ void lenv_put(lenv *e, lval *k, lval *v)
 void lenv_add_builtin(lenv *e, char *name, lbuiltin func)
 {
     lval *k = lval_sym(name);
-    lval *v = lval_fun(func);
+    lval *v = lval_fun(func, name);
     lenv_put(e, k, v);
     lval_del(k);
     lval_del(v);
