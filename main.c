@@ -76,11 +76,11 @@ struct lenv
 };
 
 // Construct a new Lisp value
-lval *lval_num(long x);                          // Number
-lval *lval_err(char *fmt_str, ...);              // Error
-lval *lval_sym(char *s);                         // Symbol
-lval *lval_sexpr();                              // S-Expression
-lval *lval_qexpr();                              // Q-Expression
+lval *lval_num(long x);                    // Number
+lval *lval_err(char *fmt_str, ...);        // Error
+lval *lval_sym(char *s);                   // Symbol
+lval *lval_sexpr();                        // S-Expression
+lval *lval_qexpr();                        // Q-Expression
 lval *lval_fun(lbuiltin func, char *name); // Function
 
 // Delete a Lisp value
@@ -110,10 +110,11 @@ lval *lval_eval(lenv *e, lval *v);               // Evaluate a Lisp value
 lval *builtin_op(lenv *e, lval *args, char *op); // Apply the operation on the argument list
 
 // Utils
-lval *lval_pop(lval *v, int i);  // Pop the element at index i
-lval *lval_take(lval *v, int i); // Pop the element at index i and delete v
-lval *lval_copy(lval *v);        // Create a copy of v
-char *ltype_name(int t);         // Return string representation of a type
+lval *lval_pop(lval *v, int i);   // Pop the element at index i
+lval *lval_take(lval *v, int i);  // Pop the element at index i and delete v
+lval *lval_copy(lval *v);         // Create a copy of v
+char *ltype_name(int t);          // Return string representation of a type
+int is_no_args_function(lval *v); // Check if v value is a function that accept no arguments
 
 // Built-in math functions
 lval *builtin_add(lenv *e, lval *args);
@@ -131,6 +132,9 @@ lval *lval_join(lval *x, lval *y); // helper for builtin_join
 
 // Handle variable definitions
 lval *builtin_def(lenv *e, lval *args);
+
+// Extra builtin functions
+lval *builtin_env_print(lenv *e, lval *args); // Print all entries in an environment
 
 int main(int argc, char **argv)
 {
@@ -441,8 +445,8 @@ lval *lval_eval_sexpr(lenv *e, lval *v)
         }
     }
 
-    // Single expression
-    if (v->count == 1)
+    //  Single expression
+    if (v->count == 1 && !is_no_args_function(v->cell[0]))
     {
         return lval_take(v, 0);
     }
@@ -577,6 +581,17 @@ char *ltype_name(int t)
     default:
         return "Unknown";
     }
+}
+
+// Check if v value is a function that accept no arguments
+int is_no_args_function(lval *v)
+{
+    if (v->type != LVAL_FUN)
+    {
+        return 0;
+    }
+
+    return v->fun == builtin_env_print;
 }
 
 // Apply the operation on the argument list
@@ -807,16 +822,6 @@ void lenv_put(lenv *e, lval *k, lval *v)
     strcpy(e->syms[e->count - 1], k->sym);
 }
 
-// Register a built-in function
-void lenv_add_builtin(lenv *e, char *name, lbuiltin func)
-{
-    lval *k = lval_sym(name);
-    lval *v = lval_fun(func, name);
-    lenv_put(e, k, v);
-    lval_del(k);
-    lval_del(v);
-}
-
 // Handle variable definitions
 lval *builtin_def(lenv *e, lval *args)
 {
@@ -849,6 +854,32 @@ lval *builtin_def(lenv *e, lval *args)
     return lval_sexpr();
 }
 
+// Print all entries in an environment
+lval *builtin_env_print(lenv *e, lval *args)
+{
+    const char *func_name = "env_print";
+    LASSERT_NUM_ARGS(func_name, args, 0);
+
+    for (int i = 0; i < e->count; i++)
+    {
+        printf("Key: %s - Value: ", e->syms[i]);
+        lval_println(e->vals[i]);
+    }
+
+    lval_del(args);
+    return lval_sexpr();
+}
+
+// Register a built-in function
+void lenv_add_builtin(lenv *e, char *name, lbuiltin func)
+{
+    lval *k = lval_sym(name);
+    lval *v = lval_fun(func, name);
+    lenv_put(e, k, v);
+    lval_del(k);
+    lval_del(v);
+}
+
 // Register all built-in functions
 void lenv_add_builtins(lenv *e)
 {
@@ -867,4 +898,7 @@ void lenv_add_builtins(lenv *e)
 
     // Variable definition function
     lenv_add_builtin(e, "def", builtin_def);
+
+    // Extra builtin functions
+    lenv_add_builtin(e, "env_print", builtin_env_print);
 }
