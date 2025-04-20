@@ -110,6 +110,9 @@ lval *builtin_eval(lenv *e, lval *args);
 lval *builtin_join(lenv *e, lval *args);
 lval *lval_join(lval *x, lval *y); // helper for builtin_join
 
+// Handle variable definitions
+lval *builtin_def(lenv *e, lval *args);
+
 int main(int argc, char **argv)
 {
     // Create the parsers
@@ -747,6 +750,31 @@ void lenv_add_builtin(lenv *e, char *name, lbuiltin func)
     lval_del(v);
 }
 
+// Handle variable definitions
+lval *builtin_def(lenv *e, lval *args)
+{
+    // First argument is a symbol list
+    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'def' - incorrect argument type");
+    lval *syms = args->cell[0];
+    for (int i = 0; i < syms->count; i++)
+    {
+        LASSERT(args, syms->cell[i]->type == LVAL_SYM, "Function 'def' - cannot define non-symbol");
+    }
+
+    // The remaining arguments is the value list
+    LASSERT(args, syms->count == args->count - 1, "Function 'def' - number of symbols and values mismatch");
+
+    // Register the variables
+    for (int i = 0; i < syms->count; i++)
+    {
+        lenv_put(e, syms->cell[i], args->cell[i + 1]);
+    }
+
+    // Delete 'args' and return an empty expression on success
+    lval_del(args);
+    return lval_sexpr();
+}
+
 // Register all built-in functions
 void lenv_add_builtins(lenv *e)
 {
@@ -762,4 +790,7 @@ void lenv_add_builtins(lenv *e)
     lenv_add_builtin(e, "-", builtin_sub);
     lenv_add_builtin(e, "*", builtin_mul);
     lenv_add_builtin(e, "/", builtin_div);
+
+    // Variable definition function
+    lenv_add_builtin(e, "def", builtin_def);
 }
