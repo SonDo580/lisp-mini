@@ -7,12 +7,27 @@
 #include "mpc.h"
 
 // Macros
-#define LASSERT(args, cond, err) \
-    if (!(cond))                 \
-    {                            \
-        lval_del(args);          \
-        return lval_err(err);    \
+#define LASSERT(args, cond, fmt_str, ...)             \
+    if (!(cond))                                      \
+    {                                                 \
+        lval *err = lval_err(fmt_str, ##__VA_ARGS__); \
+        lval_del(args);                               \
+        return err;                                   \
     }
+
+#define LASSERT_NUM_ARGS(func_name, args, expected_argc)                                  \
+    LASSERT(args, args->count == expected_argc,                                           \
+            "Function '%s' received incorrect number of arguments. Expected %i. Got %i.", \
+            func_name, expected_argc, args->count);
+
+#define LASSERT_ARG_TYPE(func_name, args, index, expected_type)                            \
+    LASSERT(args, args->cell[index]->type == expected_type,                                \
+            "Function '%s' received incorrect type for argument %i. Expected %s. Got %s.", \
+            func_name, index, ltype_name(expected_type), ltype_name(args->cell[index]->type));
+
+#define LASSERT_NOT_EMPTY(func_name, args, index) \
+    LASSERT(args, args->cell[index]->count > 0,   \
+            "Function '%s' passed {} for argument %i.", func_name, index);
 
 // Forward type declarations
 struct lval;
@@ -57,13 +72,13 @@ struct lenv
     lval **vals;
 };
 
-// Construct pointer to a new Lisp value
-lval *lval_num(long x);        // Number
-lval *lval_err(char *msg);     // Error
-lval *lval_sym(char *s);       // Symbol
-lval *lval_sexpr();            // S-Expression
-lval *lval_qexpr();            // Q-Expression
-lval *lval_fun(lbuiltin func); // Function
+// Construct a new Lisp value
+lval *lval_num(long x);             // Number
+lval *lval_err(char *fmt_str, ...); // Error
+lval *lval_sym(char *s);            // Symbol
+lval *lval_sexpr();                 // S-Expression
+lval *lval_qexpr();                 // Q-Expression
+lval *lval_fun(lbuiltin func);      // Function
 
 // Delete a Lisp value
 void lval_del(lval *v);
@@ -95,6 +110,7 @@ lval *builtin_op(lenv *e, lval *args, char *op); // Apply the operation on the a
 lval *lval_pop(lval *v, int i);  // Pop the element at index i
 lval *lval_take(lval *v, int i); // Pop the element at index i and delete v
 lval *lval_copy(lval *v);        // Create a copy of v
+char *ltype_name(int t);         // Return string representation of a type
 
 // Built-in math functions
 lval *builtin_add(lenv *e, lval *args);
@@ -178,7 +194,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-// Construct pointer to a new Number
+// Construct new Number
 lval *lval_num(long x)
 {
     lval *v = malloc(sizeof(lval));
@@ -187,17 +203,32 @@ lval *lval_num(long x)
     return v;
 }
 
-// Construct pointer to a new Error
-lval *lval_err(char *msg)
+// Construct new Error
+lval *lval_err(char *fmt_str, ...)
 {
     lval *v = malloc(sizeof(lval));
     v->type = LVAL_ERR;
-    v->err = malloc(strlen(msg) + 1);
-    strcpy(v->err, msg);
+
+    // Initialize va_list to read extra arguments after fmt_str
+    va_list variadic_args;
+    va_start(variadic_args, fmt_str);
+
+    // Allocate buffer for the error string
+    const int BUFFER_SIZE = 512;
+    v->err = malloc(BUFFER_SIZE);
+
+    // Format the variadic arguments into the buffer
+    vsnprintf(v->err, BUFFER_SIZE - 1, fmt_str, variadic_args);
+
+    // Shrink the error buffer to the exact size needed
+    v->err = realloc(v->err, strlen(v->err) + 1);
+
+    // Clean up va_list and return the constructed error value
+    va_end(variadic_args);
     return v;
 }
 
-// Construct pointer to a new Symbol
+// Construct new Symbol
 lval *lval_sym(char *s)
 {
     lval *v = malloc(sizeof(lval));
@@ -207,7 +238,7 @@ lval *lval_sym(char *s)
     return v;
 }
 
-// Construct pointer to a new S-Expression
+// Construct new S-Expression
 lval *lval_sexpr()
 {
     lval *v = malloc(sizeof(lval));
@@ -217,7 +248,7 @@ lval *lval_sexpr()
     return v;
 }
 
-// Construct pointer to a new Q-Expression
+// Construct new Q-Expression
 lval *lval_qexpr()
 {
     lval *v = malloc(sizeof(lval));
@@ -227,7 +258,7 @@ lval *lval_qexpr()
     return v;
 }
 
-// Construct pointer to a new function
+// Construct new function
 lval *lval_fun(lbuiltin func)
 {
     lval *v = malloc(sizeof(lval));
@@ -271,7 +302,7 @@ lval *lval_read_num(mpc_ast_t *t)
 {
     errno = 0;
     long x = strtol(t->contents, NULL, 10);
-    return errno != ERANGE ? lval_num(x) : lval_err("invalid number");
+    return errno != ERANGE ? lval_num(x) : lval_err("Invalid number: %s", t->contents);
 }
 
 // Add element to S-expression or a Q-expression
@@ -513,17 +544,35 @@ lval *lval_copy(lval *v)
     return x;
 }
 
+// Return string representation of a type
+char *ltype_name(int t)
+{
+    switch (t)
+    {
+    case LVAL_FUN:
+        return "Function";
+    case LVAL_NUM:
+        return "Number";
+    case LVAL_ERR:
+        return "Error";
+    case LVAL_SYM:
+        return "Symbol";
+    case LVAL_SEXPR:
+        return "S-Expression";
+    case LVAL_QEXPR:
+        return "Q-Expression";
+    default:
+        return "Unknown";
+    }
+}
+
 // Apply the operation on the argument list
 lval *builtin_op(lenv *e, lval *args, char *op)
 {
     // Ensure all arguments are numbers
     for (int i = 0; i < args->count; i++)
     {
-        if (args->cell[i]->type != LVAL_NUM)
-        {
-            lval_del(args);
-            return lval_err("Cannot operate on non-number!");
-        }
+        LASSERT_ARG_TYPE(op, args, i, LVAL_NUM);
     }
 
     // Pop the first argument
@@ -596,9 +645,10 @@ lval *builtin_div(lenv *e, lval *args)
 // Takes a Q-Expression and returns a Q-Expression with only the first element
 lval *builtin_head(lenv *e, lval *args)
 {
-    LASSERT(args, args->count == 1, "Function 'head' - too many arguments");
-    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'head' - incorrect argument type");
-    LASSERT(args, args->cell[0]->count != 0, "Function 'head' - receive {}");
+    const char *func_name = "head";
+    LASSERT_NUM_ARGS(func_name, args, 1);
+    LASSERT_ARG_TYPE(func_name, args, 0, LVAL_QEXPR);
+    LASSERT_NOT_EMPTY(func_name, args, 0);
 
     // Pop the first element and delete args
     lval *v = lval_take(args, 0);
@@ -614,9 +664,10 @@ lval *builtin_head(lenv *e, lval *args)
 // Takes a Q-Expression and returns a Q-Expression with the first element removed
 lval *builtin_tail(lenv *e, lval *args)
 {
-    LASSERT(args, args->count == 1, "Function 'tail' - too many arguments");
-    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'tail' - incorrect argument type");
-    LASSERT(args, args->cell[0]->count != 0, "Function 'tail' - receive {}");
+    const char *func_name = "tail";
+    LASSERT_NUM_ARGS(func_name, args, 1);
+    LASSERT_ARG_TYPE(func_name, args, 0, LVAL_QEXPR);
+    LASSERT_NOT_EMPTY(func_name, args, 0);
 
     // Pop the first element and delete args
     lval *v = lval_take(args, 0);
@@ -636,8 +687,9 @@ lval *builtin_list(lenv *e, lval *args)
 // Takes a Q-Expression and evaluates it as if it were a S-Expression
 lval *builtin_eval(lenv *e, lval *args)
 {
-    LASSERT(args, args->count == 1, "Function 'eval' - too many arguments");
-    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'eval' - incorrect argument type");
+    const char *func_name = "eval";
+    LASSERT_NUM_ARGS(func_name, args, 1);
+    LASSERT_ARG_TYPE(func_name, args, 0, LVAL_QEXPR);
 
     lval *v = lval_take(args, 0);
     v->type = LVAL_SEXPR;
@@ -647,9 +699,11 @@ lval *builtin_eval(lenv *e, lval *args)
 // Returns a Q-Expression by joining Q-Expressions together
 lval *builtin_join(lenv *e, lval *args)
 {
+    const char *func_name = "join";
+
     for (int i = 0; i < args->count; i++)
     {
-        LASSERT(args, args->cell[i]->type == LVAL_QEXPR, "Function 'join' - incorrect argument type");
+        LASSERT_ARG_TYPE(func_name, args, i, LVAL_QEXPR);
     }
 
     lval *v = lval_pop(args, 0);
@@ -712,7 +766,7 @@ lval *lenv_get(lenv *e, lval *k)
     }
 
     // Return error if symbol not found
-    return lval_err("unbound symbol!");
+    return lval_err("Unbound symbol '%s", k->sym);
 }
 
 // Put value into the environment
@@ -753,16 +807,23 @@ void lenv_add_builtin(lenv *e, char *name, lbuiltin func)
 // Handle variable definitions
 lval *builtin_def(lenv *e, lval *args)
 {
+    const char *func_name = "def";
+
     // First argument is a symbol list
-    LASSERT(args, args->cell[0]->type == LVAL_QEXPR, "Function 'def' - incorrect argument type");
+    LASSERT_ARG_TYPE(func_name, args, 0, LVAL_QEXPR);
     lval *syms = args->cell[0];
     for (int i = 0; i < syms->count; i++)
     {
-        LASSERT(args, syms->cell[i]->type == LVAL_SYM, "Function 'def' - cannot define non-symbol");
+        LASSERT(args, syms->cell[i]->type == LVAL_SYM,
+                "Function 'def' - cannot define non-symbol. Expected %s. Got %s.",
+                ltype_name(LVAL_SYM), ltype_name(syms->cell[i]->type));
     }
 
     // The remaining arguments is the value list
-    LASSERT(args, syms->count == args->count - 1, "Function 'def' - number of symbols and values mismatch");
+    LASSERT(args, syms->count == args->count - 1,
+            "Function 'def' - number of symbols and values mismatch. ",
+            "Number of symbols: %i. Number of values: %i",
+            syms->count, args->count - 1);
 
     // Register the variables
     for (int i = 0; i < syms->count; i++)
