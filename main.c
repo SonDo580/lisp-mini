@@ -135,6 +135,7 @@ lval *builtin_def(lenv *e, lval *args);
 
 // Extra builtin functions
 lval *builtin_env_print(lenv *e, lval *args); // Print all entries in an environment
+lval *builtin_exit(lenv *e, lval *args);      // Exit the REPL
 
 int main(int argc, char **argv)
 {
@@ -586,12 +587,10 @@ char *ltype_name(int t)
 // Check if v value is a function that accept no arguments
 int is_no_args_function(lval *v)
 {
-    if (v->type != LVAL_FUN)
-    {
-        return 0;
+    if (v->type == LVAL_FUN && (v->fun == builtin_env_print || v->fun == builtin_exit)) {
+        return 1;
     }
-
-    return v->fun == builtin_env_print;
+    return 0;
 }
 
 // Apply the operation on the argument list
@@ -870,6 +869,13 @@ lval *builtin_env_print(lenv *e, lval *args)
     return lval_sexpr();
 }
 
+// Exit the REPL
+lval *builtin_exit(lenv *e, lval *args)
+{
+    exit(0);
+    return NULL;
+}
+
 // Register a built-in function
 void lenv_add_builtin(lenv *e, char *name, lbuiltin func)
 {
@@ -901,4 +907,5 @@ void lenv_add_builtins(lenv *e)
 
     // Extra builtin functions
     lenv_add_builtin(e, "env_print", builtin_env_print);
+    lenv_add_builtin(e, "exit", builtin_exit);
 }
