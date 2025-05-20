@@ -482,18 +482,41 @@ lval *lval_call(lenv *e, lval *f, lval *args)
     int total = f->formals->count;
     int given = args->count;
 
-    if (given > total)
-    {
-        lval_del(args);
-        return lval_err("Function get passed too many arguments. Expected %i. Got %i.",
-                        total, given);
-    }
-
     while (args->count)
     {
-        // Bind arguments in function's environment
+        if (f->formals->count == 0)
+        {
+            lval_del(args);
+            return lval_err("Function get passed too many arguments. Expected %i. Got %i.",
+                            total, given);
+        }
+
+        // Pop the next formal argument
         lval *sym = lval_pop(f->formals, 0);
+
+        // Handle variadic function
+        if (strcmp(sym->sym, "&") == 0)
+        {
+            // Ensure & is followed by a single symbol
+            if (f->formals->count != 1)
+            {
+                lval_del(args);
+                return lval_err("Invalid function format. Symbol'&' not followed by a single symbol");
+            }
+
+            // The next formal arguments should be bound to remaining arguments
+            lval *nsym = lval_pop(f->formals, 0);
+            lenv_put(f->env, nsym, builtin_list(e, args));
+
+            lval_del(sym);
+            lval_del(nsym);
+            break;
+        }
+
+        // Pop the next argument
         lval *val = lval_pop(args, 0);
+
+        // Binding in function's environment
         lenv_put(f->env, sym, val);
 
         // Delete symbol and value
@@ -503,6 +526,28 @@ lval *lval_call(lenv *e, lval *f, lval *args)
 
     // Clean up argument list after binding
     lval_del(args);
+
+    // If '&' remains bind the next symbol to the empty list
+    if (f->formals->count > 0 && strcmp(f->formals->cell[0]->sym, "&") == 0)
+    {
+        // Ensure & is followed by a single symbol
+        if (f->formals->count != 2)
+        {
+            return lval_err("Invalid function format. Symbol'&' not followed by a single symbol");
+        }
+
+        // Pop and delete the '&' symbol
+        lval_del(lval_pop(f->formals, 0));
+
+        // Bind empty list to the next symbol in function's environment
+        lval *sym = lval_pop(f->formals, 0);
+        lval *val = lval_qexpr();
+        lenv_put(f->env, sym, val);
+
+        // Delete symbol and value
+        lval_del(sym);
+        lval_del(val);
+    }
 
     if (f->formals->count == 0)
     {
