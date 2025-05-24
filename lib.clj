@@ -105,6 +105,13 @@
        {true}
        {elem x (tail lst)}}})
 
+;; elem - use foldl
+(fun {elem x lst}
+     {foldl 
+      (\ {acc item} {or acc (== x item)}) 
+      false 
+      lst})
+
 ;; Apply a function to every element in list
 (fun {map f lst}
      {if (== lst nil)
