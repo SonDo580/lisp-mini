@@ -71,6 +71,13 @@
       {0}
       {+ 1 (len (tail lst))}})
 
+;; len - use foldl
+(fun {elem x lst}
+     {foldl 
+      (\ {acc _} {+ acc 1}) 
+      0 
+      lst})
+
 ;; Nth item in list
 (fun {nth n lst}
      {if (== n 0)
